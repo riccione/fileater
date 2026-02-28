@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"log"
@@ -29,6 +30,8 @@ type Organizer struct {
 	RootPath    string
 	DryRun      bool
 	TargetPaths map[string]struct{}
+	// map of Category name => set of ext
+	Categories map[string]map[string]struct{}
 }
 
 func NewOrganizer(root string, dryRun bool) *Organizer {
@@ -36,7 +39,31 @@ func NewOrganizer(root string, dryRun bool) *Organizer {
 		RootPath:    root,
 		DryRun:      dryRun,
 		TargetPaths: make(map[string]struct{}),
+		Categories:  make(map[string]map[string]struct{}),
 	}
+}
+
+// LoadConfig reads JSON file and populates Categories
+func (o *Organizer) LoadConfig(configPath string) error {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return err
+	}
+
+	// Temporary map to decode JSON
+	var rawConfig map[string][]string
+	if err := json.Unmarshal(data, &rawConfig); err != nil {
+		return err
+	}
+
+	// Convert to our internal map[string]map[string]struct{} for O(1) lookup
+	for cat, exts := range rawConfig {
+		o.Categories[cat] = make(map[string]struct{})
+		for _, ext := range exts {
+			o.Categories[cat][strings.ToLower(ext)] = struct{}{}
+		}
+	}
+	return nil
 }
 
 // processFile determines the destination and moves the file
@@ -74,15 +101,12 @@ func (o *Organizer) processFile(path string, d fs.DirEntry) error {
 func (o *Organizer) categorizeFile(path string) string {
 	ext := strings.ToLower(filepath.Ext(path))
 
-	if _, ok := videoExts[ext]; ok {
-		return "video"
+	for category, extensions := range o.Categories {
+		if _, ok := extensions[ext]; ok {
+			return category
+		}
 	}
-	if _, ok := audioExts[ext]; ok {
-		return "audio"
-	}
-	if _, ok := docsExts[ext]; ok {
-		return "docs"
-	}
+
 	return "mix"
 }
 
