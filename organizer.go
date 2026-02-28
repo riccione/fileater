@@ -89,6 +89,12 @@ func (o *Organizer) categorizeFile(path string) string {
 // resolveCollision appends a counter to the filename if a file already exists
 // Example: file.txt -> file_1.txt
 func (o *Organizer) resolveCollision(path string) string {
+	// Check if the original path is already available
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return path
+	}
+
+	// If it exists, start looking for _1, _2, etc.
 	dir := filepath.Dir(path)
 	base := filepath.Base(path)
 	ext := filepath.Ext(base)
