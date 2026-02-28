@@ -43,6 +43,15 @@ func NewOrganizer(root string, dryRun bool) *Organizer {
 	}
 }
 
+// UseDefaultCategories sets up the initial categories if no JSON is provided
+func (o *Organizer) UseDefaultCategories() {
+	o.Categories = map[string]map[string]struct{}{
+		"video": {".mp4": {}, ".mkv": {}, ".avi": {}},
+		"audio": {".mp3": {}, ".wav": {}, ".flac": {}},
+		"docs":  {".pdf": {}, ".docx": {}, ".txt": {}, ".md": {}},
+	}
+}
+
 // LoadConfig reads JSON file and populates Categories
 func (o *Organizer) LoadConfig(configPath string) error {
 	data, err := os.ReadFile(configPath)
@@ -145,8 +154,8 @@ func (o *Organizer) Run(ctx context.Context) error {
 	o.RootPath = absPath
 
 	// Prepare target directories
-	for _, dirName := range targetDirs {
-		dirPath := filepath.Join(o.RootPath, dirName)
+	for catName := range o.Categories {
+		dirPath := filepath.Join(o.RootPath, catName)
 		o.TargetPaths[dirPath] = struct{}{}
 
 		if !o.DryRun {
@@ -157,6 +166,10 @@ func (o *Organizer) Run(ctx context.Context) error {
 			log.Printf("[DRYRUN] Would create directory: %s", dirPath)
 		}
 	}
+
+	// Always add "mix" as a target path even if not in config
+	mixPath := filepath.Join(o.RootPath, "mix")
+	o.TargetPaths[mixPath] = struct{}{}
 
 	// Walk the directory tree
 	var processedCount, errorCount int
