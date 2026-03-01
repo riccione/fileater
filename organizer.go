@@ -154,8 +154,13 @@ func (o *Organizer) Run(ctx context.Context) error {
 	o.RootPath = absPath
 
 	// Prepare target directories
+	requiredDirs := []string{"mix"}
 	for catName := range o.Categories {
-		dirPath := filepath.Join(o.RootPath, catName)
+		requiredDirs = append(requiredDirs, catName)
+	}
+
+	for _, dirName := range requiredDirs {
+		dirPath := filepath.Join(o.RootPath, dirName)
 		o.TargetPaths[dirPath] = struct{}{}
 
 		if !o.DryRun {
@@ -166,10 +171,6 @@ func (o *Organizer) Run(ctx context.Context) error {
 			log.Printf("[DRYRUN] Would create directory: %s", dirPath)
 		}
 	}
-
-	// Always add "mix" as a target path even if not in config
-	mixPath := filepath.Join(o.RootPath, "mix")
-	o.TargetPaths[mixPath] = struct{}{}
 
 	// Walk the directory tree
 	var processedCount, errorCount int
