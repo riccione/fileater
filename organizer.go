@@ -30,15 +30,17 @@ var (
 type Organizer struct {
 	RootPath    string
 	DryRun      bool
+	Recursive   bool
 	TargetPaths map[string]struct{}
 	// map of Category name => set of ext
 	Categories map[string]map[string]struct{}
 }
 
-func NewOrganizer(root string, dryRun bool) *Organizer {
+func NewOrganizer(root string, dryRun bool, recursive bool) *Organizer {
 	return &Organizer{
 		RootPath:    root,
 		DryRun:      dryRun,
+		Recursive:   recursive,
 		TargetPaths: make(map[string]struct{}),
 		Categories:  make(map[string]map[string]struct{}),
 	}
@@ -231,9 +233,20 @@ func (o *Organizer) Run(ctx context.Context) error {
 
 		// Skip directories and existing target folders
 		if d.IsDir() {
+			// Never skip the root dir
+			if path == o.RootPath {
+				return nil
+			}
+
+			// Always skip target subdirs
 			if _, isTarget := o.TargetPaths[path]; isTarget && path != o.RootPath {
 				return filepath.SkipDir
 			}
+
+			if !o.Recursive {
+				return filepath.SkipDir
+			}
+
 			return nil
 		}
 
