@@ -133,3 +133,28 @@ func TestMoveFile(t *testing.T) {
 		t.Error("Source file still exists after move")
 	}
 }
+
+func TestRun_NonRecursiveByDefault(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a file in root
+	os.WriteFile(filepath.Join(tmpDir, "root.txt"), []byte("root"), 0644)
+
+	// Create a file in a subdir
+	subDir := filepath.Join(tmpDir, "my_subdir")
+	os.Mkdir(subDir, 0755)
+	os.WriteFile(filepath.Join(subDir, "nested.txt"), []byte("nested"), 0644)
+
+	// o.Recursive is false by default
+	o := NewOrganizer(tmpDir, false)
+	o.UseDefaultCategories()
+
+	ctx := context.Background()
+	o.Run(ctx)
+
+	// Check: nested.txt should still be in my_subdir, not moved to docs/
+	nestedPath := filepath.Join(subDir, "nested.txt")
+	if _, err := os.Stat(nestedPath); os.IsNotExist(err) {
+		t.Errorf("Subdirectory file was moved, but should have been ignored by default")
+	}
+}
