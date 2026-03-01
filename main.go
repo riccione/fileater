@@ -14,6 +14,8 @@ func main() {
 	dryRun := flag.Bool("dryrun", false, "Simulate the operation without moving files")
 	configPath := flag.String("config", "config.json", "Path to JSON configuration file")
 	recursive := flag.Bool("r", false, "Process subdirs recursively")
+	force := flag.Bool("f", false, "Skip confirmation prompt when used with -r (for scripts/automation)")
+	flag.Bool("force", false, "Alias for -f")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options] <path>\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "Organizes files recursively into categorized folders.\n\n")
@@ -29,7 +31,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	if *recursive {
+	// Check for --force alias
+	forceAlias := flag.Lookup("force")
+	if forceAlias != nil && forceAlias.Value.String() == "true" {
+		*force = true
+	}
+
+	if *recursive && !*force {
 		fmt.Println("WARNING: Recursive mode enabled. This will move files out of their current subdirs")
 		fmt.Print("Are you sure you want to proceed? (y/N): ")
 		var response string
