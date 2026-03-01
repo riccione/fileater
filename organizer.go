@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"os"
@@ -77,32 +78,29 @@ func (o *Organizer) LoadConfig(configPath string) error {
 
 // processFile determines the destination and moves the file
 func (o *Organizer) processFile(path string, d fs.DirEntry) error {
+	// Determine the destination dir
 	category := o.categorizeFile(path)
 	destDir := filepath.Join(o.RootPath, category)
+
+	// Resolve collisions
 	destPath := filepath.Join(destDir, d.Name())
+	finalDest := o.resolveCollision(destPath)
 
 	// Safety check: Don't move if source is already the destination
 	if path == destPath {
 		return nil
 	}
 
-	// Handle name collisions only if not in dry-run
-	finalDest := destPath
+	// Delegate the move to moveFile fn
+	if err := o.moveFile(path, finalDest); err != nil {
+		return fmt.Errorf("Move failed: %w", err)
+	}
+
+	// Log only success outcome
 	if !o.DryRun {
-		finalDest = o.resolveCollision(destPath)
+		log.Printf("Moved: %s => %s (%s)", d.Name(), filepath.Base(finalDest), category)
 	}
 
-	if o.DryRun {
-		log.Printf("[DRYRUN] Would move: %s -> %s (%s)", d.Name(), finalDest, category)
-		return nil
-	}
-
-	// Perform the move
-	if err := os.Rename(path, finalDest); err != nil {
-		return err
-	}
-
-	log.Printf("Moved: %s -> %s (%s)", d.Name(), filepath.Base(finalDest), category)
 	return nil
 }
 
@@ -142,6 +140,49 @@ func (o *Organizer) resolveCollision(path string) string {
 		}
 		counter++
 	}
+}
+
+// moveFile handles the physical relocation of files with safety fallbacks.
+func (o *Organizer) moveFile(src, dst string) error {
+	if o.DryRun {
+		log.Printf("[DRYRUN] Would move %s to %s", src, dst)
+		return nil
+	}
+
+	// Try atomic rename first
+	err := os.Rename(src, dst)
+	if err == nil {
+		return nil
+	}
+
+	// Fallback for cross-device or other rename failures
+	sFile, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("failed to open source: %w", err)
+	}
+	defer sFile.Close()
+
+	dFile, err := os.Create(dst)
+	if err != nil {
+		return fmt.Errorf("failed to create destination: %w", err)
+	}
+	defer dFile.Close()
+
+	// Efficient streaming copy
+	if _, err := io.Copy(dFile, sFile); err != nil {
+		return fmt.Errorf("copy failed: %w", err)
+	}
+
+	// Ensure data is flushed to disk before removing source
+	if err := dFile.Sync(); err != nil {
+		return fmt.Errorf("sync failed: %w", err)
+	}
+
+	// Close handles before removal (crucial for Windows)
+	sFile.Close()
+	dFile.Close()
+
+	return os.Remove(src)
 }
 
 // Run executes the organization process

@@ -105,3 +105,31 @@ func TestRun_CreatesDirectories(t *testing.T) {
 		}
 	}
 }
+
+func TestMoveFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	o := NewOrganizer(tmpDir, false)
+
+	src := filepath.Join(tmpDir, "source.txt")
+	dst := filepath.Join(tmpDir, "destination.txt")
+
+	// Create a dummy source file
+	content := []byte("hello world")
+	if err := os.WriteFile(src, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// This will fail to compile because o.moveFile isn't defined yet
+	err := o.moveFile(src, dst)
+	if err != nil {
+		t.Errorf("moveFile failed: %v", err)
+	}
+
+	// Verify destination exists and source is gone
+	if _, err := os.Stat(dst); os.IsNotExist(err) {
+		t.Error("Destination file was not created")
+	}
+	if _, err := os.Stat(src); !os.IsNotExist(err) {
+		t.Error("Source file still exists after move")
+	}
+}
