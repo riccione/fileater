@@ -11,6 +11,7 @@ import (
 func main() {
 	// Flag parsing
 	dryRun := flag.Bool("dryrun", false, "Simulate the operation without moving files")
+	configPath := flag.String("config", "config.json", "Path to JSON configuration file")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options] <path>\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "Organizes files recursively into categorized folders.\n\n")
@@ -33,6 +34,20 @@ func main() {
 	// Initialize Organizer
 	rootPath := flag.Arg(0)
 	organizer := NewOrganizer(rootPath, *dryRun)
+
+	// Check if the config file exists (either the default "config.json" or user provided)
+	if _, err := os.Stat(*configPath); err == nil {
+		if err := organizer.LoadConfig(*configPath); err != nil {
+			log.Fatalf("Error loading config: %v", err)
+		}
+	} else {
+		// Only log if the user explicitly provided a path that doesn't exist
+		if flag.Lookup("config").Value.String() != "config.json" {
+			log.Fatalf("Config file not found: %s", *configPath)
+		}
+		// If "config.json" is missing, use internal defaults
+		organizer.UseDefaultCategories()
+	}
 
 	// Execute
 	log.Printf("Starting organization of: %s", rootPath)
