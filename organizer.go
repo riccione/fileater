@@ -78,32 +78,29 @@ func (o *Organizer) LoadConfig(configPath string) error {
 
 // processFile determines the destination and moves the file
 func (o *Organizer) processFile(path string, d fs.DirEntry) error {
+	// Determine the destination dir
 	category := o.categorizeFile(path)
 	destDir := filepath.Join(o.RootPath, category)
+
+	// Resolve collisions
 	destPath := filepath.Join(destDir, d.Name())
+	finalDest := o.resolveCollision(destPath)
 
 	// Safety check: Don't move if source is already the destination
 	if path == destPath {
 		return nil
 	}
 
-	// Handle name collisions only if not in dry-run
-	finalDest := destPath
+	// Delegate the move to moveFile fn
+	if err := o.moveFile(path, finalDest); err != nil {
+		return fmt.Errorf("Move failed: %w", err)
+	}
+
+	// Log only success outcome
 	if !o.DryRun {
-		finalDest = o.resolveCollision(destPath)
+		log.Printf("Moved: %s => %s (%s)", d.Name(), filepath.Base(finalDest), category)
 	}
 
-	if o.DryRun {
-		log.Printf("[DRYRUN] Would move: %s -> %s (%s)", d.Name(), finalDest, category)
-		return nil
-	}
-
-	// Perform the move
-	if err := os.Rename(path, finalDest); err != nil {
-		return err
-	}
-
-	log.Printf("Moved: %s -> %s (%s)", d.Name(), filepath.Base(finalDest), category)
 	return nil
 }
 
