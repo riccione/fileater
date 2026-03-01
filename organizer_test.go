@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -8,6 +9,14 @@ import (
 
 func TestCategorizeFile(t *testing.T) {
 	o := NewOrganizer(".", true)
+
+	// Manually populate categories to simulate a loaded config
+	o.Categories = map[string]map[string]struct{}{
+		"video":  {".mp4": {}, ".mkv": {}, ".avi": {}},
+		"audio":  {".mp3": {}, ".wav": {}},
+		"docs":   {".pdf": {}, ".txt": {}},
+		"images": {".jpg": {}, ".png": {}},
+	}
 
 	tests := []struct {
 		name     string
@@ -18,10 +27,9 @@ func TestCategorizeFile(t *testing.T) {
 		{"Video MKV", "video.mkv", "video"},
 		{"Audio MP3", "song.mp3", "audio"},
 		{"Document PDF", "report.pdf", "docs"},
-		{"Document TXT", "notes.txt", "docs"},
+		{"Image PNG", "photo.png", "images"},
 		{"Unknown Extension", "archive.zip", "mix"},
 		{"No Extension", "README", "mix"},
-		{"Uppercase Extension", "IMAGE.PNG", "mix"}, // PNG isn't in our maps yet
 		{"Mixed Case Video", "CLIP.mKv", "video"},
 	}
 
@@ -60,5 +68,40 @@ func TestResolveCollision(t *testing.T) {
 
 	if result != expected {
 		t.Errorf("Expected collision path %s, got %s", expected, result)
+	}
+}
+
+func TestRun_CreatesDirectories(t *testing.T) {
+	// Setup a clean environment
+	tmpDir := t.TempDir()
+	ctx := context.Background()
+	o := NewOrganizer(tmpDir, false) // false = Not a dry run, actually create them
+
+	// Define custom categories
+	o.Categories = map[string]map[string]struct{}{
+		"documents": {".pdf": {}},
+		"media":     {".mp4": {}},
+	}
+
+	// Execute the Run method
+	// This will trigger the directory creation logic
+	if err := o.Run(ctx); err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	// Verify the directories exist on disk
+	expectedDirs := []string{"documents", "media", "mix"}
+
+	for _, name := range expectedDirs {
+		path := filepath.Join(tmpDir, name)
+		info, err := os.Stat(path)
+
+		if os.IsNotExist(err) {
+			t.Errorf("Expected directory %s was not created", name)
+			continue
+		}
+		if !info.IsDir() {
+			t.Errorf("Path %s exists but is not a directory", name)
+		}
 	}
 }
