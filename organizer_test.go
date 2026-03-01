@@ -9,6 +9,14 @@ import (
 func TestCategorizeFile(t *testing.T) {
 	o := NewOrganizer(".", true)
 
+	// Manually populate categories to simulate a loaded config
+	o.Categories = map[string]map[string]struct{}{
+		"video":  {".mp4": {}, ".mkv": {}, ".avi": {}},
+		"audio":  {".mp3": {}, ".wav": {}},
+		"docs":   {".pdf": {}, ".txt": {}},
+		"images": {".jpg": {}, ".png": {}},
+	}
+
 	tests := []struct {
 		name     string
 		path     string
@@ -18,10 +26,9 @@ func TestCategorizeFile(t *testing.T) {
 		{"Video MKV", "video.mkv", "video"},
 		{"Audio MP3", "song.mp3", "audio"},
 		{"Document PDF", "report.pdf", "docs"},
-		{"Document TXT", "notes.txt", "docs"},
+		{"Image PNG", "photo.png", "images"},
 		{"Unknown Extension", "archive.zip", "mix"},
 		{"No Extension", "README", "mix"},
-		{"Uppercase Extension", "IMAGE.PNG", "mix"}, // PNG isn't in our maps yet
 		{"Mixed Case Video", "CLIP.mKv", "video"},
 	}
 
