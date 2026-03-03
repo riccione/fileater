@@ -1,7 +1,8 @@
 {
-  "images": [".jpg", ".jpeg", ".png", ".gif"],
-  "video": [".mp4", ".mkv", ".avi"],
+  "images": [".jpg", ".jpeg", ".png", ".gif", ".tiff", ".tga", ".bmp", ".svg"],
+  "video": [".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv"],
   "archives": [".zip", ".tar.gz", ".7z", ".rar"],
   "code": [".go", ".py", ".js", ".html", ".css"],
-  "executables": [".exe", ".msi"]
+  "executables": [".exe", ".msi"],
+  "docs": [".txt", ".rtf", ".doc", ".docx", ".odt", ".pdf", ".md", ".xls", ".xlsx", ".ods", "csv"]
 }
