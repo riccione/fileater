@@ -12,6 +12,7 @@ import (
 )
 
 var (
+	Version    = "dev"
 	dryRun     bool
 	configPath string
 	recursive  bool
@@ -23,9 +24,10 @@ func main() {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "organizer [path]",
-	Short: "Organizes files recursively into categorized folders",
-	Args:  cobra.ExactArgs(1), // Enforces exactly one path argument
+	Use:     "fileater [path]",
+	Short:   "Organizes files recursively into categorized folders",
+	Version: Version,
+	Args:    cobra.ExactArgs(1), // Enforces exactly one path argument
 	Run: func(cmd *cobra.Command, args []string) {
 		rootPath := args[0]
 
