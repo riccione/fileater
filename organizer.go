@@ -261,6 +261,56 @@ func (o *Organizer) Run(ctx context.Context) error {
 		return nil
 	})
 
+	// Cleanup logic for empty directories
+	if o.Recursive && !o.DryRun {
+		log.Println("Cleaning up empty subdirectories...")
+		return o.cleanupEmptyDirs()
+	}
+
 	log.Printf("Finished. Processed: %d files, Errors: %d", processedCount, errorCount)
 	return err
+}
+
+// cleanupEmptyDirs walks the path and removes empty folders.
+func (o *Organizer) cleanupEmptyDirs() error {
+	// We use a slice to collect paths so we can sort them or process them
+	// without interfering with the active walk.
+	var dirs []string
+	err := filepath.WalkDir(o.RootPath, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() && path != o.RootPath {
+			// Skip target folders (video, audio, etc.)
+			if _, isTarget := o.TargetPaths[path]; isTarget {
+				return filepath.SkipDir
+			}
+			dirs = append(dirs, path)
+		}
+		return nil
+	})
+
+	if err != nil {
+		return err
+	}
+
+	// Process directories in reverse order (deepest first)
+	for i := len(dirs) - 1; i >= 0; i-- {
+		path := dirs[i]
+		entries, err := os.ReadDir(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue // Already removed by a deeper recursive call
+			}
+			return err
+		}
+
+		if len(entries) == 0 {
+			log.Printf("Removing empty directory: %s", path)
+			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+		}
+	}
+	return nil
 }
