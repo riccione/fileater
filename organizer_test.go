@@ -158,3 +158,47 @@ func TestRun_NonRecursiveByDefault(t *testing.T) {
 		t.Errorf("Subdirectory file was moved, but should have been ignored by default")
 	}
 }
+
+func TestRun_CleanupEmptyDirs(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Should be removed: empty directory
+	emptySub := filepath.Join(tmpDir, "empty_subdir")
+	os.Mkdir(emptySub, 0755)
+
+	// Should be removed: directory where the file gets moved out
+	moveSub := filepath.Join(tmpDir, "move_subdir")
+	os.Mkdir(moveSub, 0755)
+	os.WriteFile(filepath.Join(moveSub, "test.txt"), []byte("data"), 0644)
+
+	// Should NOT be removed: contains a subdirectory that we'll pretend is a target
+	keepSub := filepath.Join(tmpDir, "keep_subdir")
+	os.Mkdir(keepSub, 0755)
+	staySub := filepath.Join(keepSub, "important_stuff")
+	os.Mkdir(staySub, 0755)
+	// Put a file in the nested dir so it stays non-empty
+	os.WriteFile(filepath.Join(staySub, "keep.me"), []byte("data"), 0644)
+
+	o := NewOrganizer(tmpDir, false, true)
+	o.UseDefaultCategories()
+
+	// Ensure we tell the organizer that "important_stuff" is a protected target path
+	// This prevents the organizer from moving its contents or deleting it
+	o.TargetPaths = make(map[string]struct{})
+	o.TargetPaths[staySub] = struct{}{}
+
+	if err := o.Run(context.Background()); err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	// Assertions
+	if _, err := os.Stat(emptySub); !os.IsNotExist(err) {
+		t.Errorf("Empty directory %s was not removed", emptySub)
+	}
+	if _, err := os.Stat(moveSub); !os.IsNotExist(err) {
+		t.Errorf("Directory %s should have been removed after its file moved", moveSub)
+	}
+	if _, err := os.Stat(keepSub); os.IsNotExist(err) {
+		t.Errorf("Directory %s should still exist because it contains a protected subdir", keepSub)
+	}
+}
