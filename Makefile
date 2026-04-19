@@ -1,6 +1,6 @@
 # Added variables for build paths and versioning
 BINARY_NAME=fileater
-BUILD_DIR=build
+BUILD_DIR=bin
 # Logic to grab git tag or short hash
 VERSION=$$(git describe --tags --always)
 
