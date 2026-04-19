@@ -1,6 +1,6 @@
 # Added variables for build paths and versioning
 BINARY_NAME=fileater
-BUILD_DIR=build
+BUILD_DIR=bin
 # Logic to grab git tag or short hash
 VERSION=$$(git describe --tags --always)
 
@@ -9,8 +9,12 @@ build:
 	mkdir -p $(BUILD_DIR)
 	go build -ldflags="-X 'main.Version=$(VERSION)'" -o $(BUILD_DIR)/$(BINARY_NAME) .
 
+# Runs all tests in the current directory with verbose output
+test:
+	go test -v ./...
+
 # Clean target to remove the build directory
 clean:
 	rm -rf $(BUILD_DIR)
 
-.PHONY: build clean
+.PHONY: build test clean
