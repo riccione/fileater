@@ -1,0 +1,74 @@
+name: Release
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+      - name: Run Tests
+        run: make test
+
+  build-and-release:
+    name: Build and Release
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+            goos: linux
+            goarch: amd64
+            binary_name: fileater-linux-amd64
+          - os: windows
+            arch: amd64
+            goos: windows
+            goarch: amd64
+            binary_name: fileater-windows-amd64.exe
+          - os: darwin
+            arch: amd64
+            goos: darwin
+            goarch: amd64
+            binary_name: fileater-macos-intel
+          - os: darwin
+            arch: arm64
+            goos: darwin
+            goarch: arm64
+            binary_name: fileater-macos-m1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Build Binary
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
+          go build -ldflags="-s -w -X 'main.Version=$VERSION'" \
+          -o bin/${{ matrix.binary_name }} .
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: bin/fileater-*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
