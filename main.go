@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -17,6 +18,7 @@ var (
 	configPath string
 	recursive  bool
 	force      bool
+	logPath    string
 )
 
 func main() {
@@ -46,8 +48,25 @@ var rootCmd = &cobra.Command{
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
+		// Setup logger
+		var logger *slog.Logger
+		if logPath != "" {
+			logFile, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			if err != nil {
+				log.Fatalf("Error opening log file: %v", err)
+			}
+			defer logFile.Close()
+			logger = slog.New(slog.NewTextHandler(logFile, &slog.HandlerOptions{
+				AddSource: true,
+			}))
+		} else {
+			logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+				AddSource: true,
+			}))
+		}
+
 		// Initialize Organizer
-		organizer := NewOrganizer(rootPath, dryRun, recursive)
+		organizer := NewOrganizer(rootPath, dryRun, recursive, logger)
 
 		// Check if the config file exists (either the default "config.json" or user provided)
 		if _, err := os.Stat(configPath); err == nil {
@@ -82,6 +101,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "config.json", "Path to JSON configuration file")
 	rootCmd.PersistentFlags().BoolVarP(&recursive, "recursive", "r", false, "Process subdirs recursively")
 	rootCmd.PersistentFlags().BoolVarP(&force, "force", "f", false, "Skip confirmation prompt (for scripts/automation)")
+	rootCmd.PersistentFlags().StringVarP(&logPath, "log", "l", "", "Path to log file (appended if exists)")
 }
 
 func Execute() {
