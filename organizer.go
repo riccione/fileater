@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,17 +31,19 @@ var (
 type Organizer struct {
 	RootPath    string
 	DryRun      bool
-	Recursive   bool
+	Recursive  bool
+	Logger     *slog.Logger
 	TargetPaths map[string]struct{}
 	// map of Category name => set of ext
 	Categories map[string]map[string]struct{}
 }
 
-func NewOrganizer(root string, dryRun bool, recursive bool) *Organizer {
+func NewOrganizer(root string, dryRun bool, recursive bool, logger *slog.Logger) *Organizer {
 	return &Organizer{
 		RootPath:    root,
 		DryRun:      dryRun,
-		Recursive:   recursive,
+		Recursive:  recursive,
+		Logger:     logger,
 		TargetPaths: make(map[string]struct{}),
 		Categories:  make(map[string]map[string]struct{}),
 	}
@@ -95,12 +98,23 @@ func (o *Organizer) processFile(path string, d fs.DirEntry) error {
 
 	// Delegate the move to moveFile fn
 	if err := o.moveFile(path, finalDest); err != nil {
+		o.Logger.Error("Move failed",
+			"action", "MOVE",
+			"source", path,
+			"destination", finalDest,
+			"error", err.Error(),
+		)
 		return fmt.Errorf("Move failed: %w", err)
 	}
 
 	// Log only success outcome
 	if !o.DryRun {
 		log.Printf("Moved: %s => %s (%s)", d.Name(), filepath.Base(finalDest), category)
+		o.Logger.Info("File moved",
+			"action", "MOVE",
+			"source", path,
+			"destination", finalDest,
+		)
 	}
 
 	return nil
@@ -208,8 +222,17 @@ func (o *Organizer) Run(ctx context.Context) error {
 
 		if !o.DryRun {
 			if err := os.MkdirAll(dirPath, 0755); err != nil {
+				o.Logger.Error("Failed to create directory",
+					"action", "CREATE_DIR",
+					"path", dirPath,
+					"error", err.Error(),
+				)
 				return fmt.Errorf("failed to create directory %s: %w", dirPath, err)
 			}
+			o.Logger.Info("Directory created",
+				"action", "CREATE_DIR",
+				"path", dirPath,
+			)
 		} else {
 			log.Printf("[DRYRUN] Would create directory: %s", dirPath)
 		}
@@ -227,6 +250,10 @@ func (o *Organizer) Run(ctx context.Context) error {
 
 		if err != nil {
 			log.Printf("Error accessing path %s: %v", path, err)
+			o.Logger.Error("Error accessing path",
+				"path", path,
+				"error", err.Error(),
+			)
 			errorCount++
 			return nil
 		}
@@ -253,6 +280,10 @@ func (o *Organizer) Run(ctx context.Context) error {
 		// Process individual file
 		if err := o.processFile(path, d); err != nil {
 			log.Printf("Error moving %s: %v", path, err)
+			o.Logger.Error("Error moving file",
+				"source", path,
+				"error", err.Error(),
+			)
 			errorCount++
 		} else {
 			processedCount++
@@ -308,8 +339,17 @@ func (o *Organizer) cleanupEmptyDirs() error {
 		if len(entries) == 0 {
 			log.Printf("Removing empty directory: %s", path)
 			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+				o.Logger.Error("Failed to remove directory",
+					"action", "DELETE_DIR",
+					"path", path,
+					"error", err.Error(),
+				)
 				return err
 			}
+			o.Logger.Info("Directory removed",
+				"action", "DELETE_DIR",
+				"path", path,
+			)
 		}
 	}
 	return nil
