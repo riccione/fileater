@@ -2,13 +2,18 @@ package main
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
+func newTestLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(os.Stdout, nil))
+}
+
 func TestCategorizeFile(t *testing.T) {
-	o := NewOrganizer(".", true, false)
+	o := NewOrganizer(".", true, false, newTestLogger())
 
 	// Manually populate categories to simulate a loaded config
 	o.Categories = map[string]map[string]struct{}{
@@ -46,7 +51,7 @@ func TestCategorizeFile(t *testing.T) {
 func TestResolveCollision(t *testing.T) {
 	// Create a temporary directory unique to this test run
 	tmpDir := t.TempDir()
-	o := NewOrganizer(tmpDir, false, false)
+	o := NewOrganizer(tmpDir, false, false, newTestLogger())
 
 	// Scenario 1: File does not exist
 	// We create a path inside our empty temp directory
@@ -75,7 +80,7 @@ func TestRun_CreatesDirectories(t *testing.T) {
 	// Setup a clean environment
 	tmpDir := t.TempDir()
 	ctx := context.Background()
-	o := NewOrganizer(tmpDir, false, false) // false = Not a dry run, actually create them
+	o := NewOrganizer(tmpDir, false, false, newTestLogger()) // false = Not a dry run, actually create them
 
 	// Define custom categories
 	o.Categories = map[string]map[string]struct{}{
@@ -108,7 +113,7 @@ func TestRun_CreatesDirectories(t *testing.T) {
 
 func TestMoveFile(t *testing.T) {
 	tmpDir := t.TempDir()
-	o := NewOrganizer(tmpDir, false, false)
+	o := NewOrganizer(tmpDir, false, false, newTestLogger())
 
 	src := filepath.Join(tmpDir, "source.txt")
 	dst := filepath.Join(tmpDir, "destination.txt")
@@ -146,7 +151,7 @@ func TestRun_NonRecursiveByDefault(t *testing.T) {
 	os.WriteFile(filepath.Join(subDir, "nested.txt"), []byte("nested"), 0644)
 
 	// o.Recursive is false by default
-	o := NewOrganizer(tmpDir, false, false)
+	o := NewOrganizer(tmpDir, false, false, newTestLogger())
 	o.UseDefaultCategories()
 
 	ctx := context.Background()
@@ -179,7 +184,7 @@ func TestRun_CleanupEmptyDirs(t *testing.T) {
 	// Put a file in the nested dir so it stays non-empty
 	os.WriteFile(filepath.Join(staySub, "keep.me"), []byte("data"), 0644)
 
-	o := NewOrganizer(tmpDir, false, true)
+	o := NewOrganizer(tmpDir, false, true, newTestLogger())
 	o.UseDefaultCategories()
 
 	// Ensure we tell the organizer that "important_stuff" is a protected target path
