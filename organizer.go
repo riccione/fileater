@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // Category definitions for file extensions
@@ -31,19 +32,54 @@ var (
 type Organizer struct {
 	RootPath    string
 	DryRun      bool
-	Recursive  bool
-	Logger     *slog.Logger
+	Recursive   bool
+	Logger      *slog.Logger
 	TargetPaths map[string]struct{}
 	// map of Category name => set of ext
 	Categories map[string]map[string]struct{}
+
+	startTime  time.Time
+	totalBytes int64
+}
+
+type Metrics struct {
+	ExecutionTime  time.Duration
+	FilesProcessed int
+	TotalBytes     int64
+	FilesPerSecond float64
+}
+
+func (m Metrics) String() string {
+	var dataStr string
+	if m.TotalBytes >= 1<<30 {
+		dataStr = fmt.Sprintf("%.2f GB", float64(m.TotalBytes)/(1<<30))
+	} else {
+		dataStr = fmt.Sprintf("%.2f MB", float64(m.TotalBytes)/(1<<20))
+	}
+
+	return fmt.Sprintf(
+		"Summary\n"+
+			"+----------------------+-------------+\n"+
+			"| Metric               | Value       |\n"+
+			"+----------------------+-------------+\n"+
+			"| Total Exec Time      | %-11s |\n"+
+			"| Total Files          | %-11d |\n"+
+			"| Total Data Moved     | %-11s |\n"+
+			"| Avg Files/sec        | %-11.2f |\n"+
+			"+----------------------+-------------+\n",
+		m.ExecutionTime.Round(time.Second),
+		m.FilesProcessed,
+		dataStr,
+		m.FilesPerSecond,
+	)
 }
 
 func NewOrganizer(root string, dryRun bool, recursive bool, logger *slog.Logger) *Organizer {
 	return &Organizer{
 		RootPath:    root,
 		DryRun:      dryRun,
-		Recursive:  recursive,
-		Logger:     logger,
+		Recursive:   recursive,
+		Logger:      logger,
 		TargetPaths: make(map[string]struct{}),
 		Categories:  make(map[string]map[string]struct{}),
 	}
@@ -96,16 +132,28 @@ func (o *Organizer) processFile(path string, d fs.DirEntry) error {
 		return nil
 	}
 
-	// Delegate the move to moveFile fn
-	if err := o.moveFile(path, finalDest); err != nil {
-		o.Logger.Error("Move failed",
-			"action", "MOVE",
-			"source", path,
-			"destination", finalDest,
-			"error", err.Error(),
-		)
-		return fmt.Errorf("Move failed: %w", err)
+	// Get file size for metrics (before move)
+	var size int64
+	if o.DryRun {
+		fi, err := os.Stat(path)
+		if err == nil {
+			size = fi.Size()
+		}
+	} else {
+		var err error
+		size, err = o.moveFile(path, finalDest)
+		if err != nil {
+			o.Logger.Error("Move failed",
+				"action", "MOVE",
+				"source", path,
+				"destination", finalDest,
+				"error", err.Error(),
+			)
+			return fmt.Errorf("Move failed: %w", err)
+		}
 	}
+
+	o.totalBytes += size
 
 	// Log only success outcome
 	if !o.DryRun {
@@ -159,50 +207,61 @@ func (o *Organizer) resolveCollision(path string) string {
 }
 
 // moveFile handles the physical relocation of files with safety fallbacks.
-func (o *Organizer) moveFile(src, dst string) error {
+func (o *Organizer) moveFile(src, dst string) (int64, error) {
 	if o.DryRun {
 		log.Printf("[DRYRUN] Would move %s to %s", src, dst)
-		return nil
+		return 0, nil
 	}
 
 	// Try atomic rename first
 	err := os.Rename(src, dst)
 	if err == nil {
-		return nil
+		fi, err := os.Stat(dst)
+		if err != nil {
+			return 0, err
+		}
+		return fi.Size(), nil
 	}
 
 	// Fallback for cross-device or other rename failures
 	sFile, err := os.Open(src)
 	if err != nil {
-		return fmt.Errorf("failed to open source: %w", err)
+		return 0, fmt.Errorf("failed to open source: %w", err)
 	}
 	defer sFile.Close()
 
 	dFile, err := os.Create(dst)
 	if err != nil {
-		return fmt.Errorf("failed to create destination: %w", err)
+		return 0, fmt.Errorf("failed to create destination: %w", err)
 	}
 	defer dFile.Close()
 
 	// Efficient streaming copy
-	if _, err := io.Copy(dFile, sFile); err != nil {
-		return fmt.Errorf("copy failed: %w", err)
+	written, err := io.Copy(dFile, sFile)
+	if err != nil {
+		return 0, fmt.Errorf("copy failed: %w", err)
 	}
 
 	// Ensure data is flushed to disk before removing source
 	if err := dFile.Sync(); err != nil {
-		return fmt.Errorf("sync failed: %w", err)
+		return 0, fmt.Errorf("sync failed: %w", err)
 	}
 
 	// Close handles before removal (crucial for Windows)
 	sFile.Close()
 	dFile.Close()
 
-	return os.Remove(src)
+	if err := os.Remove(src); err != nil {
+		return 0, err
+	}
+
+	return written, nil
 }
 
 // Run executes the organization process
 func (o *Organizer) Run(ctx context.Context) error {
+	o.startTime = time.Now()
+
 	// Path validation and resolution
 	absPath, err := filepath.Abs(o.RootPath)
 	if err != nil {
@@ -295,10 +354,25 @@ func (o *Organizer) Run(ctx context.Context) error {
 	// Cleanup logic for empty directories
 	if o.Recursive && !o.DryRun {
 		log.Println("Cleaning up empty subdirectories...")
-		return o.cleanupEmptyDirs()
+		if err := o.cleanupEmptyDirs(); err != nil {
+			log.Printf("Cleanup error: %v", err)
+		}
 	}
 
-	log.Printf("Finished. Processed: %d files, Errors: %d", processedCount, errorCount)
+	executionTime := time.Since(o.startTime)
+	filesPerSecond := float64(processedCount) / executionTime.Seconds()
+	if executionTime.Seconds() == 0 {
+		filesPerSecond = float64(processedCount)
+	}
+
+	metrics := Metrics{
+		ExecutionTime:  executionTime,
+		FilesProcessed: processedCount,
+		TotalBytes:     o.totalBytes,
+		FilesPerSecond: filesPerSecond,
+	}
+
+	fmt.Print(metrics.String())
 	return err
 }
 
