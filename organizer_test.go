@@ -124,8 +124,7 @@ func TestMoveFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// This will fail to compile because o.moveFile isn't defined yet
-	err := o.moveFile(src, dst)
+	_, err := o.moveFile(src, dst)
 	if err != nil {
 		t.Errorf("moveFile failed: %v", err)
 	}
