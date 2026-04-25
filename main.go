@@ -19,6 +19,8 @@ var (
 	recursive  bool
 	force      bool
 	logPath    string
+	minSize    string
+	maxSize   string
 )
 
 func main() {
@@ -66,7 +68,10 @@ var rootCmd = &cobra.Command{
 		}
 
 		// Initialize Organizer
-		organizer := NewOrganizer(rootPath, dryRun, recursive, logger)
+		organizer, err := NewOrganizer(rootPath, dryRun, recursive, logger, minSize, maxSize)
+		if err != nil {
+			log.Fatalf("Error initializing organizer: %v", err)
+		}
 
 		// Check if the config file exists (either the default "config.json" or user provided)
 		if _, err := os.Stat(configPath); err == nil {
@@ -102,6 +107,8 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&recursive, "recursive", "r", false, "Process subdirs recursively")
 	rootCmd.PersistentFlags().BoolVarP(&force, "force", "f", false, "Skip confirmation prompt (for scripts/automation)")
 	rootCmd.PersistentFlags().StringVarP(&logPath, "log", "l", "", "Path to log file (appended if exists)")
+	rootCmd.PersistentFlags().StringVar(&minSize, "min-size", "", "Minimum file size (e.g., 100KB, 10MB, 1GB)")
+	rootCmd.PersistentFlags().StringVar(&maxSize, "max-size", "", "Maximum file size (e.g., 100KB, 10MB, 1GB)")
 }
 
 func Execute() {
