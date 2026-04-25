@@ -13,7 +13,7 @@ func newTestLogger() *slog.Logger {
 }
 
 func TestCategorizeFile(t *testing.T) {
-	o := NewOrganizer(".", true, false, newTestLogger())
+	o, _ := NewOrganizer(".", true, false, newTestLogger(), "", "")
 
 	// Manually populate categories to simulate a loaded config
 	o.Categories = map[string]map[string]struct{}{
@@ -51,7 +51,7 @@ func TestCategorizeFile(t *testing.T) {
 func TestResolveCollision(t *testing.T) {
 	// Create a temporary directory unique to this test run
 	tmpDir := t.TempDir()
-	o := NewOrganizer(tmpDir, false, false, newTestLogger())
+	o, _ := NewOrganizer(tmpDir, false, false, newTestLogger(), "", "")
 
 	// Scenario 1: File does not exist
 	// We create a path inside our empty temp directory
@@ -80,7 +80,7 @@ func TestRun_CreatesDirectories(t *testing.T) {
 	// Setup a clean environment
 	tmpDir := t.TempDir()
 	ctx := context.Background()
-	o := NewOrganizer(tmpDir, false, false, newTestLogger()) // false = Not a dry run, actually create them
+	o, _ := NewOrganizer(tmpDir, false, false, newTestLogger(), "", "") // false = Not a dry run, actually create them
 
 	// Define custom categories
 	o.Categories = map[string]map[string]struct{}{
@@ -113,7 +113,7 @@ func TestRun_CreatesDirectories(t *testing.T) {
 
 func TestMoveFile(t *testing.T) {
 	tmpDir := t.TempDir()
-	o := NewOrganizer(tmpDir, false, false, newTestLogger())
+	o, _ := NewOrganizer(tmpDir, false, false, newTestLogger(), "", "")
 
 	src := filepath.Join(tmpDir, "source.txt")
 	dst := filepath.Join(tmpDir, "destination.txt")
@@ -150,7 +150,7 @@ func TestRun_NonRecursiveByDefault(t *testing.T) {
 	os.WriteFile(filepath.Join(subDir, "nested.txt"), []byte("nested"), 0644)
 
 	// o.Recursive is false by default
-	o := NewOrganizer(tmpDir, false, false, newTestLogger())
+	o, _ := NewOrganizer(tmpDir, false, false, newTestLogger(), "", "")
 	o.UseDefaultCategories()
 
 	ctx := context.Background()
@@ -183,7 +183,7 @@ func TestRun_CleanupEmptyDirs(t *testing.T) {
 	// Put a file in the nested dir so it stays non-empty
 	os.WriteFile(filepath.Join(staySub, "keep.me"), []byte("data"), 0644)
 
-	o := NewOrganizer(tmpDir, false, true, newTestLogger())
+	o, _ := NewOrganizer(tmpDir, false, true, newTestLogger(), "", "")
 	o.UseDefaultCategories()
 
 	// Ensure we tell the organizer that "important_stuff" is a protected target path
@@ -204,5 +204,110 @@ func TestRun_CleanupEmptyDirs(t *testing.T) {
 	}
 	if _, err := os.Stat(keepSub); os.IsNotExist(err) {
 		t.Errorf("Directory %s should still exist because it contains a protected subdir", keepSub)
+	}
+}
+
+func TestParseSize(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected int64
+		wantErr  bool
+	}{
+		{"", 0, false},
+		{"0B", 0, false},
+		{"100B", 100, false},
+		{"1KB", 1024, false},
+		{"1K", 1024, false},
+		{"1MB", 1024 * 1024, false},
+		{"1M", 1024 * 1024, false},
+		{"1GB", 1024 * 1024 * 1024, false},
+		{"1G", 1024 * 1024 * 1024, false},
+		{"1TB", 1024 * 1024 * 1024 * 1024, false},
+		{"1T", 1024 * 1024 * 1024 * 1024, false},
+		{"512MB", 512 * 1024 * 1024, false},
+		{"invalid", 0, true},
+		{"KB", 0, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			result, err := ParseSize(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ParseSize(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr && result != tt.expected {
+				t.Errorf("ParseSize(%q) = %d, want %d", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestRun_MinSizeFilter(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	fileSmall := filepath.Join(tmpDir, "small.txt")
+	os.WriteFile(fileSmall, []byte("tiny"), 0644)
+
+	fileLarge := filepath.Join(tmpDir, "large.txt")
+	os.WriteFile(fileLarge, make([]byte, 200), 0644)
+
+	o, _ := NewOrganizer(tmpDir, false, false, newTestLogger(), "100B", "")
+	o.UseDefaultCategories()
+
+	if err := o.Run(context.Background()); err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	movedLarge := filepath.Join(tmpDir, "docs", "large.txt")
+	if _, err := os.Stat(movedLarge); err != nil {
+		t.Errorf("Large file should have been moved to docs/: %v", err)
+	}
+}
+
+func TestRun_MaxSizeFilter(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	fileSmall := filepath.Join(tmpDir, "small.txt")
+	os.WriteFile(fileSmall, []byte("tiny"), 0644)
+
+	fileLarge := filepath.Join(tmpDir, "large.txt")
+	os.WriteFile(fileLarge, make([]byte, 200), 0644)
+
+	o, _ := NewOrganizer(tmpDir, false, false, newTestLogger(), "", "100B")
+	o.UseDefaultCategories()
+
+	if err := o.Run(context.Background()); err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	movedSmall := filepath.Join(tmpDir, "docs", "small.txt")
+	if _, err := os.Stat(movedSmall); err != nil {
+		t.Errorf("Small file should have been moved to docs/: %v", err)
+	}
+}
+
+func TestRun_SizeRangeFilter(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	fileTiny := filepath.Join(tmpDir, "tiny.txt")
+	os.WriteFile(fileTiny, []byte("x"), 0644)
+
+	fileSmall := filepath.Join(tmpDir, "small.txt")
+	os.WriteFile(fileSmall, make([]byte, 50), 0644)
+
+	fileLarge := filepath.Join(tmpDir, "large.txt")
+	os.WriteFile(fileLarge, make([]byte, 200), 0644)
+
+	o, _ := NewOrganizer(tmpDir, false, false, newTestLogger(), "40B", "100B")
+	o.UseDefaultCategories()
+
+	if err := o.Run(context.Background()); err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	movedSmall := filepath.Join(tmpDir, "docs", "small.txt")
+	if _, err := os.Stat(movedSmall); err != nil {
+		t.Errorf("Small file (50B) should have been moved to docs/: %v", err)
 	}
 }
