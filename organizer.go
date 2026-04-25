@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -40,6 +41,9 @@ type Organizer struct {
 
 	startTime  time.Time
 	totalBytes int64
+
+	minSize int64
+	maxSize int64
 }
 
 type Metrics struct {
@@ -74,8 +78,8 @@ func (m Metrics) String() string {
 	)
 }
 
-func NewOrganizer(root string, dryRun bool, recursive bool, logger *slog.Logger) *Organizer {
-	return &Organizer{
+func NewOrganizer(root string, dryRun bool, recursive bool, logger *slog.Logger, minSizeStr, maxSizeStr string) (*Organizer, error) {
+	o := &Organizer{
 		RootPath:    root,
 		DryRun:      dryRun,
 		Recursive:   recursive,
@@ -83,6 +87,24 @@ func NewOrganizer(root string, dryRun bool, recursive bool, logger *slog.Logger)
 		TargetPaths: make(map[string]struct{}),
 		Categories:  make(map[string]map[string]struct{}),
 	}
+
+	minSize, err := ParseSize(minSizeStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid min-size: %w", err)
+	}
+	o.minSize = minSize
+
+	maxSize, err := ParseSize(maxSizeStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid max-size: %w", err)
+	}
+	o.maxSize = maxSize
+
+	if minSize > 0 && maxSize > 0 && minSize > maxSize {
+		return nil, fmt.Errorf("min-size cannot be greater than max-size")
+	}
+
+	return o, nil
 }
 
 // UseDefaultCategories sets up the initial categories if no JSON is provided
@@ -179,6 +201,46 @@ func (o *Organizer) categorizeFile(path string) string {
 	}
 
 	return "mix"
+}
+
+func ParseSize(sizeStr string) (int64, error) {
+	if sizeStr == "" {
+		return 0, nil
+	}
+
+	sizeStr = strings.ToUpper(strings.TrimSpace(sizeStr))
+
+	type unitInfo struct {
+		unit string
+		mult int64
+	}
+	units := []unitInfo{
+		{"TB", 1024 * 1024 * 1024 * 1024},
+		{"T", 1024 * 1024 * 1024 * 1024},
+		{"GB", 1024 * 1024 * 1024},
+		{"G", 1024 * 1024 * 1024},
+		{"MB", 1024 * 1024},
+		{"M", 1024 * 1024},
+		{"KB", 1024},
+		{"K", 1024},
+		{"B", 1},
+	}
+
+	for _, ui := range units {
+		if strings.HasSuffix(sizeStr, ui.unit) {
+			numStr := strings.TrimSuffix(sizeStr, ui.unit)
+			if numStr == "" {
+				return 0, fmt.Errorf("invalid size format: %s", sizeStr)
+			}
+			value, err := strconv.ParseInt(numStr, 10, 64)
+			if err != nil {
+				return 0, fmt.Errorf("invalid size value: %s", numStr)
+			}
+			return value * ui.mult, nil
+		}
+	}
+
+	return 0, fmt.Errorf("unknown size unit in: %s", sizeStr)
 }
 
 // resolveCollision appends a counter to the filename if a file already exists
@@ -334,6 +396,34 @@ func (o *Organizer) Run(ctx context.Context) error {
 			}
 
 			return nil
+		}
+
+		// Size filter check
+		if o.minSize > 0 || o.maxSize > 0 {
+			info, err := d.Info()
+			if err != nil {
+				log.Printf("Error getting file info for %s: %v", path, err)
+				return nil
+			}
+			size := info.Size()
+			if o.minSize > 0 && size < o.minSize {
+				log.Printf("Skipped (too small): %s (%d bytes)", path, size)
+				o.Logger.Info("File skipped - too small",
+					"action", "SKIP_SIZE",
+					"path", path,
+					"size", size,
+				)
+				return nil
+			}
+			if o.maxSize > 0 && size > o.maxSize {
+				log.Printf("Skipped (too large): %s (%d bytes)", path, size)
+				o.Logger.Info("File skipped - too large",
+					"action", "SKIP_SIZE",
+					"path", path,
+					"size", size,
+				)
+				return nil
+			}
 		}
 
 		// Process individual file
