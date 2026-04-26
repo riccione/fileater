@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -44,6 +46,8 @@ type Organizer struct {
 
 	minSize int64
 	maxSize int64
+
+	deleteDupes bool
 }
 
 type Metrics struct {
@@ -78,7 +82,7 @@ func (m Metrics) String() string {
 	)
 }
 
-func NewOrganizer(root string, dryRun bool, recursive bool, logger *slog.Logger, minSizeStr, maxSizeStr string) (*Organizer, error) {
+func NewOrganizer(root string, dryRun bool, recursive bool, logger *slog.Logger, minSizeStr, maxSizeStr string, deleteDupes bool) (*Organizer, error) {
 	o := &Organizer{
 		RootPath:    root,
 		DryRun:      dryRun,
@@ -86,6 +90,7 @@ func NewOrganizer(root string, dryRun bool, recursive bool, logger *slog.Logger,
 		Logger:      logger,
 		TargetPaths: make(map[string]struct{}),
 		Categories:  make(map[string]map[string]struct{}),
+		deleteDupes: deleteDupes,
 	}
 
 	minSize, err := ParseSize(minSizeStr)
@@ -105,6 +110,69 @@ func NewOrganizer(root string, dryRun bool, recursive bool, logger *slog.Logger,
 	}
 
 	return o, nil
+}
+
+func (o *Organizer) hashFile(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	hasher := sha256.New()
+	buf := make([]byte, 32*1024) // 32KB buffer for memory efficiency
+
+	for {
+		n, err := file.Read(buf)
+		if n > 0 {
+			if _, writeErr := hasher.Write(buf[:n]); writeErr != nil {
+				return "", writeErr
+			}
+		}
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return "", err
+		}
+	}
+
+	return hex.EncodeToString(hasher.Sum(nil)), nil
+}
+
+func (o *Organizer) findDuplicate(srcSize int64, srcHash string, destDir string) (string, error) {
+	entries, err := os.ReadDir(destDir)
+	if err != nil {
+		return "", err
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		destPath := filepath.Join(destDir, entry.Name())
+
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+
+		if info.Size() != srcSize {
+			continue
+		}
+
+		destHash, err := o.hashFile(destPath)
+		if err != nil {
+			continue
+		}
+
+		if srcHash == destHash {
+			return destPath, nil
+		}
+	}
+
+	return "", nil
 }
 
 // UseDefaultCategories sets up the initial categories if no JSON is provided
@@ -141,9 +209,48 @@ func (o *Organizer) LoadConfig(configPath string) error {
 
 // processFile determines the destination and moves the file
 func (o *Organizer) processFile(path string, d fs.DirEntry) error {
-	// Determine the destination dir
+	info, err := d.Info()
+	if err != nil {
+		return fmt.Errorf("failed to get file info: %w", err)
+	}
+	srcSize := info.Size()
+
 	category := o.categorizeFile(path)
 	destDir := filepath.Join(o.RootPath, category)
+
+	// Duplicate detection - check if destDir exists before hashing
+	if _, err := os.Stat(destDir); err == nil {
+		srcHash, err := o.hashFile(path)
+		if err == nil {
+			dupPath, err := o.findDuplicate(srcSize, srcHash, destDir)
+			if err == nil && dupPath != "" {
+				log.Printf("Duplicate found: %s matches existing file %s", d.Name(), dupPath)
+				o.Logger.Info("Duplicate detected",
+					"action", "DUPLICATE",
+					"source", path,
+					"duplicate", dupPath,
+				)
+
+				if o.deleteDupes {
+					if err := os.Remove(path); err != nil {
+						o.Logger.Error("Failed to delete duplicate source",
+							"action", "DELETE",
+							"source", path,
+							"error", err.Error(),
+						)
+						return fmt.Errorf("failed to delete duplicate: %w", err)
+					}
+					log.Printf("Deleted duplicate: %s", path)
+					o.Logger.Info("Duplicate deleted",
+						"action", "DELETE",
+						"source", path,
+						"duplicate_of", dupPath,
+					)
+				}
+				return nil
+			}
+		}
+	}
 
 	// Resolve collisions
 	destPath := filepath.Join(destDir, d.Name())
