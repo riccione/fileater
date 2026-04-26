@@ -21,6 +21,7 @@ var (
 	logPath    string
 	minSize    string
 	maxSize   string
+	deleteDupes bool
 )
 
 func main() {
@@ -68,7 +69,7 @@ var rootCmd = &cobra.Command{
 		}
 
 		// Initialize Organizer
-		organizer, err := NewOrganizer(rootPath, dryRun, recursive, logger, minSize, maxSize)
+		organizer, err := NewOrganizer(rootPath, dryRun, recursive, logger, minSize, maxSize, deleteDupes)
 		if err != nil {
 			log.Fatalf("Error initializing organizer: %v", err)
 		}
@@ -109,6 +110,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&logPath, "log", "l", "", "Path to log file (appended if exists)")
 	rootCmd.PersistentFlags().StringVar(&minSize, "min-size", "", "Minimum file size (e.g., 100KB, 10MB, 1GB)")
 	rootCmd.PersistentFlags().StringVar(&maxSize, "max-size", "", "Maximum file size (e.g., 100KB, 10MB, 1GB)")
+	rootCmd.PersistentFlags().BoolVarP(&deleteDupes, "delete-dupes", "", false, "Delete duplicate files instead of skipping")
 }
 
 func Execute() {
