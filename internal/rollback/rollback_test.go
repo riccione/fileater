@@ -1,7 +1,6 @@
-package main
+package rollback
 
 import (
-	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -71,7 +70,7 @@ func TestUndo_RestoreDeletedDirs(t *testing.T) {
 
 	// Create history file with deleted dir
 	state := HistoryState{
-		MovedFiles: map[string]string{},
+		MovedFiles:  map[string]string{},
 		DeletedDirs: []string{deletedDir},
 		RootPath:    tmpDir,
 	}
@@ -121,40 +120,6 @@ func TestUndo_InvalidHistoryFile(t *testing.T) {
 	err := Undo(tmpDir, false)
 	if err == nil {
 		t.Fatal("expected error for invalid history file")
-	}
-}
-
-func TestSaveHistory(t *testing.T) {
-	tmpDir := t.TempDir()
-	ctx := context.Background()
-
-	o, _ := NewOrganizer(tmpDir, false, false, newTestLogger(), "", "", false)
-	o.movedFiles = map[string]string{
-		filepath.Join(tmpDir, "docs", "file.txt"): filepath.Join(tmpDir, "file.txt"),
-	}
-	o.deletedDirs = []string{filepath.Join(tmpDir, "emptydir")}
-
-	// Run to trigger SaveHistory
-	o.Run(ctx)
-
-	// Verify history file exists
-	statePath := filepath.Join(tmpDir, ".fileater-history.json")
-	if _, err := os.Stat(statePath); os.IsNotExist(err) {
-		t.Fatal("history file was not created")
-	}
-
-	// Verify content
-	data, _ := os.ReadFile(statePath)
-	var state HistoryState
-	if err := json.Unmarshal(data, &state); err != nil {
-		t.Fatalf("failed to parse history file: %v", err)
-	}
-
-	if len(state.MovedFiles) != 1 {
-		t.Errorf("expected 1 moved file, got %d", len(state.MovedFiles))
-	}
-	if len(state.DeletedDirs) != 1 {
-		t.Errorf("expected 1 deleted dir, got %d", len(state.DeletedDirs))
 	}
 }
 

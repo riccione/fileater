@@ -1,11 +1,14 @@
-package main
+package organizer
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/riccione/fileater/internal/rollback"
 )
 
 func newTestLogger() *slog.Logger {
@@ -252,7 +255,7 @@ func TestRun_MinSizeFilter(t *testing.T) {
 	fileLarge := filepath.Join(tmpDir, "large.txt")
 	os.WriteFile(fileLarge, make([]byte, 200), 0644)
 
-o, _ := NewOrganizer(tmpDir, false, false, newTestLogger(), "100B", "", false)
+	o, _ := NewOrganizer(tmpDir, false, false, newTestLogger(), "100B", "", false)
 	o.UseDefaultCategories()
 
 	if err := o.Run(context.Background()); err != nil {
@@ -274,10 +277,10 @@ func TestRun_MaxSizeFilter(t *testing.T) {
 	fileLarge := filepath.Join(tmpDir, "large.txt")
 	os.WriteFile(fileLarge, make([]byte, 200), 0644)
 
-o, _ := NewOrganizer(tmpDir, false, false, newTestLogger(), "", "100B", false)
+	o, _ := NewOrganizer(tmpDir, false, false, newTestLogger(), "", "100B", false)
 	o.UseDefaultCategories()
 
-if err := o.Run(context.Background()); err != nil {
+	if err := o.Run(context.Background()); err != nil {
 		t.Fatalf("Run failed: %v", err)
 	}
 
@@ -372,5 +375,39 @@ func TestDuplicateDetection_DeleteDuplicates(t *testing.T) {
 		t.Log("Duplicate source file was deleted as expected")
 	} else {
 		t.Error("Duplicate source file was not deleted when deleteDupes is enabled")
+	}
+}
+
+func TestSaveHistory(t *testing.T) {
+	tmpDir := t.TempDir()
+	ctx := context.Background()
+
+	o, _ := NewOrganizer(tmpDir, false, false, newTestLogger(), "", "", false)
+	o.movedFiles = map[string]string{
+		filepath.Join(tmpDir, "docs", "file.txt"): filepath.Join(tmpDir, "file.txt"),
+	}
+	o.deletedDirs = []string{filepath.Join(tmpDir, "emptydir")}
+
+	// Run to trigger SaveHistory
+	o.Run(ctx)
+
+	// Verify history file exists
+	statePath := filepath.Join(tmpDir, ".fileater-history.json")
+	if _, err := os.Stat(statePath); os.IsNotExist(err) {
+		t.Fatal("history file was not created")
+	}
+
+	// Verify content
+	data, _ := os.ReadFile(statePath)
+	var state rollback.HistoryState
+	if err := json.Unmarshal(data, &state); err != nil {
+		t.Fatalf("failed to parse history file: %v", err)
+	}
+
+	if len(state.MovedFiles) != 1 {
+		t.Errorf("expected 1 moved file, got %d", len(state.MovedFiles))
+	}
+	if len(state.DeletedDirs) != 1 {
+		t.Errorf("expected 1 deleted dir, got %d", len(state.DeletedDirs))
 	}
 }

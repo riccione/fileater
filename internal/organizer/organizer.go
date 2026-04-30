@@ -1,4 +1,4 @@
-package main
+package organizer
 
 import (
 	"context"
@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/riccione/fileater/internal/rollback"
 )
 
 // Category definitions for file extensions
@@ -304,7 +306,7 @@ func (o *Organizer) processFile(path string, d fs.DirEntry) error {
 }
 
 func (o *Organizer) SaveHistory() error {
-	state := HistoryState{
+	state := rollback.HistoryState{
 		MovedFiles:  o.movedFiles,
 		DeletedDirs: o.deletedDirs,
 		RootPath:    o.RootPath,

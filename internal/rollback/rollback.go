@@ -1,4 +1,4 @@
-package main
+package rollback
 
 import (
 	"encoding/json"
@@ -11,8 +11,8 @@ import (
 
 type HistoryState struct {
 	MovedFiles  map[string]string `json:"moved_files"`
-	DeletedDirs []string         `json:"deleted_dirs"`
-	RootPath    string           `json:"root_path"`
+	DeletedDirs []string          `json:"deleted_dirs"`
+	RootPath    string            `json:"root_path"`
 }
 
 func Undo(rootPath string, dryRun bool) error {
