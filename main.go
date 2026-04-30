@@ -22,6 +22,7 @@ var (
 	minSize    string
 	maxSize   string
 	deleteDupes bool
+	undo       bool
 )
 
 func main() {
@@ -35,6 +36,14 @@ var rootCmd = &cobra.Command{
 	Args:    cobra.ExactArgs(1), // Enforces exactly one path argument
 	Run: func(cmd *cobra.Command, args []string) {
 		rootPath := args[0]
+
+		if undo {
+			if err := Undo(rootPath, dryRun); err != nil {
+				log.Fatalf("Undo failed: %v", err)
+			}
+			log.Println("Undo completed successfully.")
+			return
+		}
 
 		if recursive && !force {
 			fmt.Println("WARNING: Recursive mode enabled. This will move files out of their current subdirs")
@@ -111,6 +120,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&minSize, "min-size", "", "Minimum file size (e.g., 100KB, 10MB, 1GB)")
 	rootCmd.PersistentFlags().StringVar(&maxSize, "max-size", "", "Maximum file size (e.g., 100KB, 10MB, 1GB)")
 	rootCmd.PersistentFlags().BoolVarP(&deleteDupes, "delete-dupes", "", false, "Delete duplicate files instead of skipping")
+	rootCmd.PersistentFlags().BoolVar(&undo, "undo", false, "Undo the last organization run and restore original directory structure")
 }
 
 func Execute() {

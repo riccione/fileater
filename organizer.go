@@ -48,6 +48,9 @@ type Organizer struct {
 	maxSize int64
 
 	deleteDupes bool
+
+	movedFiles  map[string]string
+	deletedDirs []string
 }
 
 type Metrics struct {
@@ -91,6 +94,8 @@ func NewOrganizer(root string, dryRun bool, recursive bool, logger *slog.Logger,
 		TargetPaths: make(map[string]struct{}),
 		Categories:  make(map[string]map[string]struct{}),
 		deleteDupes: deleteDupes,
+		movedFiles:  make(map[string]string),
+		deletedDirs: []string{},
 	}
 
 	minSize, err := ParseSize(minSizeStr)
@@ -280,6 +285,7 @@ func (o *Organizer) processFile(path string, d fs.DirEntry) error {
 			)
 			return fmt.Errorf("Move failed: %w", err)
 		}
+		o.movedFiles[finalDest] = path
 	}
 
 	o.totalBytes += size
@@ -294,6 +300,27 @@ func (o *Organizer) processFile(path string, d fs.DirEntry) error {
 		)
 	}
 
+	return nil
+}
+
+func (o *Organizer) SaveHistory() error {
+	state := HistoryState{
+		MovedFiles:  o.movedFiles,
+		DeletedDirs: o.deletedDirs,
+		RootPath:    o.RootPath,
+	}
+
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal history state: %w", err)
+	}
+
+	statePath := filepath.Join(o.RootPath, ".fileater-history.json")
+	if err := os.WriteFile(statePath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write history file: %w", err)
+	}
+
+	log.Printf("History saved to: %s", statePath)
 	return nil
 }
 
@@ -570,6 +597,13 @@ func (o *Organizer) Run(ctx context.Context) error {
 	}
 
 	fmt.Print(metrics.String())
+
+	if !o.DryRun && len(o.movedFiles) > 0 {
+		if err := o.SaveHistory(); err != nil {
+			log.Printf("Warning: failed to save history file: %v", err)
+		}
+	}
+
 	return err
 }
 
@@ -609,6 +643,7 @@ func (o *Organizer) cleanupEmptyDirs() error {
 
 		if len(entries) == 0 {
 			log.Printf("Removing empty directory: %s", path)
+			o.deletedDirs = append(o.deletedDirs, path)
 			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 				o.Logger.Error("Failed to remove directory",
 					"action", "DELETE_DIR",
