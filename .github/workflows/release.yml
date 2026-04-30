@@ -62,9 +62,10 @@ jobs:
       - name: Build Binary
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
+          mkdir -p bin
           GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
           go build -ldflags="-s -w -X 'main.Version=$VERSION'" \
-          -o bin/${{ matrix.binary_name }} .
+          -o bin/${{ matrix.binary_name }} ./cmd/fileater
 
       - name: Release
         uses: softprops/action-gh-release@v2
