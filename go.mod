@@ -1,4 +1,4 @@
-module fileater
+module github.com/riccione/fileater
 
 go 1.24.4
 

@@ -9,20 +9,22 @@ import (
 	"os"
 	"strings"
 
+	"github.com/riccione/fileater/internal/organizer"
+	"github.com/riccione/fileater/internal/rollback"
 	"github.com/spf13/cobra"
 )
 
 var (
-	Version    = "dev"
-	dryRun     bool
-	configPath string
-	recursive  bool
-	force      bool
-	logPath    string
-	minSize    string
-	maxSize   string
+	Version     = "dev"
+	dryRun      bool
+	configPath  string
+	recursive   bool
+	force       bool
+	logPath     string
+	minSize     string
+	maxSize     string
 	deleteDupes bool
-	undo       bool
+	undo        bool
 )
 
 func main() {
@@ -38,7 +40,7 @@ var rootCmd = &cobra.Command{
 		rootPath := args[0]
 
 		if undo {
-			if err := Undo(rootPath, dryRun); err != nil {
+			if err := rollback.Undo(rootPath, dryRun); err != nil {
 				log.Fatalf("Undo failed: %v", err)
 			}
 			log.Println("Undo completed successfully.")
@@ -78,7 +80,7 @@ var rootCmd = &cobra.Command{
 		}
 
 		// Initialize Organizer
-		organizer, err := NewOrganizer(rootPath, dryRun, recursive, logger, minSize, maxSize, deleteDupes)
+		organizer, err := organizer.NewOrganizer(rootPath, dryRun, recursive, logger, minSize, maxSize, deleteDupes)
 		if err != nil {
 			log.Fatalf("Error initializing organizer: %v", err)
 		}
