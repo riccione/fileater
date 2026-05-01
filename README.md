@@ -65,7 +65,12 @@ Basic command pattern:
 | `--recursive` | `-r` | Process subdirectories recursively and move files to root categories. |
 | `--force` | `-f` | Skip the confirmation prompt when using recursive mode. |
 | `--dryrun` | `-d` | Simulate the operation without moving files or creating directories. |
+| `--undo` | | Restore the original directory structure from the last run. |
+| `--delete-dupes`| | Automatically delete duplicate files instead of skipping them. |
+| `--min-size` | | Filter files by minimum size (e.g., `100KB`, `10MB`). |
+| `--max-size` | | Filter files by maximum size (e.g., `1GB`). |
 | `--config` | `-c` | Path to a custom JSON configuration file (defaults to `config.json`). |
+| `--log` | `-l` | Path to a log file for appending operation details. |
 | `--version` | | Show the current version of Fileater. |
 | `--help` | `-h` | Show help message with all available commands. |
 
