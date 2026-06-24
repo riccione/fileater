@@ -19,21 +19,6 @@ import (
 	"github.com/riccione/fileater/internal/history"
 )
 
-// Category definitions for file extensions
-var (
-	videoExts = map[string]struct{}{
-		".mp4": {}, ".mkv": {}, ".avi": {}, ".mov": {}, ".wmv": {}, ".flv": {}, ".webm": {},
-	}
-	audioExts = map[string]struct{}{
-		".mp3": {}, ".wav": {}, ".ogg": {}, ".flac": {}, ".aac": {}, ".m4a": {}, ".wma": {},
-	}
-	docsExts = map[string]struct{}{
-		".pdf": {}, ".doc": {}, ".docx": {}, ".txt": {}, ".md": {}, ".rtf": {}, ".odt": {}, ".xlsx": {}, ".pptx": {},
-	}
-	// Target directory names
-	targetDirs = []string{"video", "docs", "audio", "mix"}
-)
-
 type Organizer struct {
 	rootPath    string
 	dryRun      bool
@@ -290,7 +275,7 @@ func (o *Organizer) processFile(path string, d fs.DirEntry) error {
 				"destination", finalDest,
 				"error", err.Error(),
 			)
-			return fmt.Errorf("Move failed: %w", err)
+			return fmt.Errorf("move failed: %w", err)
 		}
 		o.movedFiles[finalDest] = path
 	}
@@ -419,9 +404,9 @@ func (o *Organizer) moveFile(src, dst string) (int64, error) {
 	// Try atomic rename first
 	err := os.Rename(src, dst)
 	if err == nil {
-		fi, err := os.Stat(dst)
-		if err != nil {
-			return 0, err
+		fi, statErr := os.Stat(dst)
+		if statErr != nil {
+			return 0, statErr
 		}
 		return fi.Size(), nil
 	}
@@ -483,13 +468,13 @@ func (o *Organizer) Run(ctx context.Context) error {
 		o.targetPaths[dirPath] = struct{}{}
 
 		if !o.dryRun {
-			if err := os.MkdirAll(dirPath, 0755); err != nil {
+			if mkdirErr := os.MkdirAll(dirPath, 0755); mkdirErr != nil {
 				o.logger.Error("Failed to create directory",
 					"action", "CREATE_DIR",
 					"path", dirPath,
-					"error", err.Error(),
+					"error", mkdirErr.Error(),
 				)
-				return fmt.Errorf("failed to create directory %s: %w", dirPath, err)
+				return fmt.Errorf("failed to create directory %s: %w", dirPath, mkdirErr)
 			}
 			o.logger.Info("Directory created",
 				"action", "CREATE_DIR",
@@ -503,7 +488,7 @@ func (o *Organizer) Run(ctx context.Context) error {
 	// Walk the directory tree
 	var processedCount, errorCount int
 	err = filepath.WalkDir(o.rootPath, func(path string, d fs.DirEntry, err error) error {
-		// Check if context was cancelled (Ctrl+C)
+		// Check if context was canceled (Ctrl+C)
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -585,8 +570,8 @@ func (o *Organizer) Run(ctx context.Context) error {
 	// Cleanup logic for empty directories
 	if o.recursive && !o.dryRun {
 		log.Println("Cleaning up empty subdirectories...")
-		if err := o.cleanupEmptyDirs(); err != nil {
-			log.Printf("Cleanup error: %v", err)
+		if cleanupErr := o.cleanupEmptyDirs(); cleanupErr != nil {
+			log.Printf("Cleanup error: %v", cleanupErr)
 		}
 	}
 
@@ -606,8 +591,8 @@ func (o *Organizer) Run(ctx context.Context) error {
 	fmt.Print(metrics.String())
 
 	if !o.dryRun && len(o.movedFiles) > 0 {
-		if err := o.SaveHistory(); err != nil {
-			log.Printf("Warning: failed to save history file: %v", err)
+		if historyErr := o.SaveHistory(); historyErr != nil {
+			log.Printf("Warning: failed to save history file: %v", historyErr)
 		}
 	}
 
