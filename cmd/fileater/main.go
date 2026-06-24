@@ -7,7 +7,9 @@ import (
 	"log"
 	"log/slog"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/spf13/cobra"
 
@@ -63,8 +65,8 @@ var rootCmd = &cobra.Command{
 		}
 
 		// Setup context with Signal Handling (Ctrl+C)
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
 
 		// Setup logger
 		var logger *slog.Logger
