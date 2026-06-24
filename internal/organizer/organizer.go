@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/riccione/fileater/internal/rollback"
+	"github.com/riccione/fileater/internal/history"
 )
 
 // Category definitions for file extensions
@@ -306,7 +306,7 @@ func (o *Organizer) processFile(path string, d fs.DirEntry) error {
 }
 
 func (o *Organizer) SaveHistory() error {
-	state := rollback.HistoryState{
+	state := history.HistoryState{
 		MovedFiles:  o.movedFiles,
 		DeletedDirs: o.deletedDirs,
 		RootPath:    o.RootPath,

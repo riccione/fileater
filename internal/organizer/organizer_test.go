@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/riccione/fileater/internal/rollback"
+	"github.com/riccione/fileater/internal/history"
 )
 
 func newTestLogger() *slog.Logger {
@@ -399,7 +399,7 @@ func TestSaveHistory(t *testing.T) {
 
 	// Verify content
 	data, _ := os.ReadFile(statePath)
-	var state rollback.HistoryState
+	var state history.HistoryState
 	if err := json.Unmarshal(data, &state); err != nil {
 		t.Fatalf("failed to parse history file: %v", err)
 	}

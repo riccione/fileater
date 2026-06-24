@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/riccione/fileater/internal/history"
 )
 
 func TestUndo_NoHistoryFile(t *testing.T) {
@@ -30,7 +32,7 @@ func TestUndo_RestoreFiles(t *testing.T) {
 	os.Rename(originalFile, movedFile)
 
 	// Create history file
-	state := HistoryState{
+	state := history.HistoryState{
 		MovedFiles: map[string]string{
 			movedFile: originalFile,
 		},
@@ -69,7 +71,7 @@ func TestUndo_RestoreDeletedDirs(t *testing.T) {
 	os.Remove(deletedDir)
 
 	// Create history file with deleted dir
-	state := HistoryState{
+	state := history.HistoryState{
 		MovedFiles:  map[string]string{},
 		DeletedDirs: []string{deletedDir},
 		RootPath:    tmpDir,
@@ -93,7 +95,7 @@ func TestUndo_MissingSourceFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create history file pointing to non-existent file
-	state := HistoryState{
+	state := history.HistoryState{
 		MovedFiles: map[string]string{
 			filepath.Join(tmpDir, "docs", "nonexistent.txt"): filepath.Join(tmpDir, "nonexistent.txt"),
 		},
@@ -137,7 +139,7 @@ func TestUndo_DryRun(t *testing.T) {
 	os.Rename(originalFile, movedFile)
 
 	// Create history file
-	state := HistoryState{
+	state := history.HistoryState{
 		MovedFiles: map[string]string{
 			movedFile: originalFile,
 		},
