@@ -7,13 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-)
 
-type HistoryState struct {
-	MovedFiles  map[string]string `json:"moved_files"`
-	DeletedDirs []string          `json:"deleted_dirs"`
-	RootPath    string            `json:"root_path"`
-}
+	"github.com/riccione/fileater/internal/history"
+)
 
 func Undo(rootPath string, dryRun bool) error {
 	statePath := filepath.Join(rootPath, ".fileater-history.json")
@@ -26,7 +22,7 @@ func Undo(rootPath string, dryRun bool) error {
 		return fmt.Errorf("failed to read history file: %w", err)
 	}
 
-	var state HistoryState
+	var state history.HistoryState
 	if err := json.Unmarshal(data, &state); err != nil {
 		return fmt.Errorf("failed to parse history file: %w", err)
 	}
