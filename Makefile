@@ -31,8 +31,12 @@ build-all:
 test:
 	go test -v ./...
 
+# Runs golangci-lint
+lint:
+	golangci-lint run ./...
+
 # Clean target to remove the build directory
 clean:
 	rm -rf $(BUILD_DIR)
 
-.PHONY: build test clean
+.PHONY: build test lint clean
