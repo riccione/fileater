@@ -412,6 +412,12 @@ func (o *Organizer) moveFile(src, dst string) (int64, error) {
 	}
 
 	// Fallback for cross-device or other rename failures
+	// Get source file metadata before copy
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		return 0, fmt.Errorf("failed to stat source: %w", err)
+	}
+
 	sFile, err := os.Open(src)
 	if err != nil {
 		return 0, fmt.Errorf("failed to open source: %w", err)
@@ -435,9 +441,19 @@ func (o *Organizer) moveFile(src, dst string) (int64, error) {
 		return 0, fmt.Errorf("sync failed: %w", err)
 	}
 
-	// Close handles before removal (crucial for Windows)
+	// Close handles before metadata operations (crucial for Windows)
 	sFile.Close()
 	dFile.Close()
+
+	// Preserve file permissions
+	if err := os.Chmod(dst, srcInfo.Mode()); err != nil {
+		return 0, fmt.Errorf("failed to preserve permissions: %w", err)
+	}
+
+	// Preserve file timestamps
+	if err := os.Chtimes(dst, srcInfo.ModTime(), srcInfo.ModTime()); err != nil {
+		return 0, fmt.Errorf("failed to preserve timestamps: %w", err)
+	}
 
 	if err := os.Remove(src); err != nil {
 		return 0, err
