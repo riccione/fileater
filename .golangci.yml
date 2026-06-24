@@ -1,0 +1,38 @@
+version: "2"
+
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+linters:
+  default: none
+  enable:
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - misspell
+    - unconvert
+    - copyloopvar
+    - errcheck
+  formatters:
+    enable:
+      - gofmt
+      - goimports
+  settings:
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+    goimports:
+      local-prefixes:
+        - github.com/riccione/fileater
+    misspell:
+      locale: US
+  exclusions:
+    presets:
+      - std-error-handling
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
