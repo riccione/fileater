@@ -51,9 +51,12 @@ var rootCmd = &cobra.Command{
 			fmt.Println("WARNING: Recursive mode enabled. This will move files out of their current subdirs")
 			fmt.Print("Are you sure you want to proceed? (y/N): ")
 			var response string
-			fmt.Scanln(&response)
+			if _, err := fmt.Scanln(&response); err != nil {
+				fmt.Println("Operation canceled.")
+				return
+			}
 			if strings.ToLower(response) != "y" {
-				fmt.Println("Operation cancelled.")
+				fmt.Println("Operation canceled.")
 				return
 			}
 		}
@@ -103,7 +106,7 @@ var rootCmd = &cobra.Command{
 		log.Printf("Starting organization of: %s", rootPath)
 		if err := organizer.Run(ctx); err != nil {
 			if err == context.Canceled {
-				log.Println("Operation cancelled by user.")
+				log.Println("Operation canceled by user.")
 			} else {
 				log.Fatalf("Fatal error: %v", err)
 			}
