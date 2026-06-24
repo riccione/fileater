@@ -19,7 +19,7 @@ func TestCategorizeFile(t *testing.T) {
 	o, _ := NewOrganizer(".", true, false, newTestLogger(), "", "", false)
 
 	// Manually populate categories to simulate a loaded config
-	o.Categories = map[string]map[string]struct{}{
+	o.categories = map[string]map[string]struct{}{
 		"video":  {".mp4": {}, ".mkv": {}, ".avi": {}},
 		"audio":  {".mp3": {}, ".wav": {}},
 		"docs":   {".pdf": {}, ".txt": {}},
@@ -86,7 +86,7 @@ func TestRun_CreatesDirectories(t *testing.T) {
 	o, _ := NewOrganizer(tmpDir, false, false, newTestLogger(), "", "", false) // false = Not a dry run, actually create them
 
 	// Define custom categories
-	o.Categories = map[string]map[string]struct{}{
+	o.categories = map[string]map[string]struct{}{
 		"documents": {".pdf": {}},
 		"media":     {".mp4": {}},
 	}
@@ -191,8 +191,8 @@ func TestRun_CleanupEmptyDirs(t *testing.T) {
 
 	// Ensure we tell the organizer that "important_stuff" is a protected target path
 	// This prevents the organizer from moving its contents or deleting it
-	o.TargetPaths = make(map[string]struct{})
-	o.TargetPaths[staySub] = struct{}{}
+	o.targetPaths = make(map[string]struct{})
+	o.targetPaths[staySub] = struct{}{}
 
 	if err := o.Run(context.Background()); err != nil {
 		t.Fatalf("Run failed: %v", err)
@@ -330,7 +330,7 @@ func TestDuplicateDetection(t *testing.T) {
 	os.WriteFile(duplicateFile, content, 0644)
 
 	o, _ := NewOrganizer(tmpDir, false, false, newTestLogger(), "", "", false)
-	o.Categories = map[string]map[string]struct{}{
+	o.categories = map[string]map[string]struct{}{
 		"docs": {".txt": {}},
 	}
 
@@ -363,7 +363,7 @@ func TestDuplicateDetection_DeleteDuplicates(t *testing.T) {
 	os.WriteFile(duplicateFile, content, 0644)
 
 	o, _ := NewOrganizer(tmpDir, false, false, newTestLogger(), "", "", true)
-	o.Categories = map[string]map[string]struct{}{
+	o.categories = map[string]map[string]struct{}{
 		"docs": {".txt": {}},
 	}
 

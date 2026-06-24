@@ -35,13 +35,13 @@ var (
 )
 
 type Organizer struct {
-	RootPath    string
-	DryRun      bool
-	Recursive   bool
-	Logger      *slog.Logger
-	TargetPaths map[string]struct{}
+	rootPath    string
+	dryRun      bool
+	recursive   bool
+	logger      *slog.Logger
+	targetPaths map[string]struct{}
 	// map of Category name => set of ext
-	Categories map[string]map[string]struct{}
+	categories map[string]map[string]struct{}
 
 	startTime  time.Time
 	totalBytes int64
@@ -53,6 +53,11 @@ type Organizer struct {
 
 	movedFiles  map[string]string
 	deletedDirs []string
+}
+
+// RootPath returns the resolved root path for this organizer.
+func (o *Organizer) RootPath() string {
+	return o.rootPath
 }
 
 type Metrics struct {
@@ -89,12 +94,12 @@ func (m Metrics) String() string {
 
 func NewOrganizer(root string, dryRun bool, recursive bool, logger *slog.Logger, minSizeStr, maxSizeStr string, deleteDupes bool) (*Organizer, error) {
 	o := &Organizer{
-		RootPath:    root,
-		DryRun:      dryRun,
-		Recursive:   recursive,
-		Logger:      logger,
-		TargetPaths: make(map[string]struct{}),
-		Categories:  make(map[string]map[string]struct{}),
+		rootPath:    root,
+		dryRun:      dryRun,
+		recursive:   recursive,
+		logger:      logger,
+		targetPaths: make(map[string]struct{}),
+		categories:  make(map[string]map[string]struct{}),
 		deleteDupes: deleteDupes,
 		movedFiles:  make(map[string]string),
 		deletedDirs: []string{},
@@ -184,7 +189,7 @@ func (o *Organizer) findDuplicate(srcSize int64, srcHash string, destDir string)
 
 // UseDefaultCategories sets up the initial categories if no JSON is provided
 func (o *Organizer) UseDefaultCategories() {
-	o.Categories = map[string]map[string]struct{}{
+	o.categories = map[string]map[string]struct{}{
 		"video": {".mp4": {}, ".mkv": {}, ".avi": {}},
 		"audio": {".mp3": {}, ".wav": {}, ".flac": {}},
 		"docs":  {".pdf": {}, ".docx": {}, ".txt": {}, ".md": {}},
@@ -206,9 +211,9 @@ func (o *Organizer) LoadConfig(configPath string) error {
 
 	// Convert to our internal map[string]map[string]struct{} for O(1) lookup
 	for cat, exts := range rawConfig {
-		o.Categories[cat] = make(map[string]struct{})
+		o.categories[cat] = make(map[string]struct{})
 		for _, ext := range exts {
-			o.Categories[cat][strings.ToLower(ext)] = struct{}{}
+			o.categories[cat][strings.ToLower(ext)] = struct{}{}
 		}
 	}
 	return nil
@@ -223,7 +228,7 @@ func (o *Organizer) processFile(path string, d fs.DirEntry) error {
 	srcSize := info.Size()
 
 	category := o.categorizeFile(path)
-	destDir := filepath.Join(o.RootPath, category)
+	destDir := filepath.Join(o.rootPath, category)
 
 	// Duplicate detection - check if destDir exists before hashing
 	if _, err := os.Stat(destDir); err == nil {
@@ -232,7 +237,7 @@ func (o *Organizer) processFile(path string, d fs.DirEntry) error {
 			dupPath, err := o.findDuplicate(srcSize, srcHash, destDir)
 			if err == nil && dupPath != "" {
 				log.Printf("Duplicate found: %s matches existing file %s", d.Name(), dupPath)
-				o.Logger.Info("Duplicate detected",
+				o.logger.Info("Duplicate detected",
 					"action", "DUPLICATE",
 					"source", path,
 					"duplicate", dupPath,
@@ -240,7 +245,7 @@ func (o *Organizer) processFile(path string, d fs.DirEntry) error {
 
 				if o.deleteDupes {
 					if err := os.Remove(path); err != nil {
-						o.Logger.Error("Failed to delete duplicate source",
+						o.logger.Error("Failed to delete duplicate source",
 							"action", "DELETE",
 							"source", path,
 							"error", err.Error(),
@@ -248,7 +253,7 @@ func (o *Organizer) processFile(path string, d fs.DirEntry) error {
 						return fmt.Errorf("failed to delete duplicate: %w", err)
 					}
 					log.Printf("Deleted duplicate: %s", path)
-					o.Logger.Info("Duplicate deleted",
+					o.logger.Info("Duplicate deleted",
 						"action", "DELETE",
 						"source", path,
 						"duplicate_of", dupPath,
@@ -270,7 +275,7 @@ func (o *Organizer) processFile(path string, d fs.DirEntry) error {
 
 	// Get file size for metrics (before move)
 	var size int64
-	if o.DryRun {
+	if o.dryRun {
 		fi, err := os.Stat(path)
 		if err == nil {
 			size = fi.Size()
@@ -279,7 +284,7 @@ func (o *Organizer) processFile(path string, d fs.DirEntry) error {
 		var err error
 		size, err = o.moveFile(path, finalDest)
 		if err != nil {
-			o.Logger.Error("Move failed",
+			o.logger.Error("Move failed",
 				"action", "MOVE",
 				"source", path,
 				"destination", finalDest,
@@ -293,9 +298,9 @@ func (o *Organizer) processFile(path string, d fs.DirEntry) error {
 	o.totalBytes += size
 
 	// Log only success outcome
-	if !o.DryRun {
+	if !o.dryRun {
 		log.Printf("Moved: %s => %s (%s)", d.Name(), filepath.Base(finalDest), category)
-		o.Logger.Info("File moved",
+		o.logger.Info("File moved",
 			"action", "MOVE",
 			"source", path,
 			"destination", finalDest,
@@ -309,7 +314,7 @@ func (o *Organizer) SaveHistory() error {
 	state := history.HistoryState{
 		MovedFiles:  o.movedFiles,
 		DeletedDirs: o.deletedDirs,
-		RootPath:    o.RootPath,
+		RootPath:    o.rootPath,
 	}
 
 	data, err := json.MarshalIndent(state, "", "  ")
@@ -317,7 +322,7 @@ func (o *Organizer) SaveHistory() error {
 		return fmt.Errorf("failed to marshal history state: %w", err)
 	}
 
-	statePath := filepath.Join(o.RootPath, ".fileater-history.json")
+	statePath := filepath.Join(o.rootPath, ".fileater-history.json")
 	if err := os.WriteFile(statePath, data, 0644); err != nil {
 		return fmt.Errorf("failed to write history file: %w", err)
 	}
@@ -330,7 +335,7 @@ func (o *Organizer) SaveHistory() error {
 func (o *Organizer) categorizeFile(path string) string {
 	ext := strings.ToLower(filepath.Ext(path))
 
-	for category, extensions := range o.Categories {
+	for category, extensions := range o.categories {
 		if _, ok := extensions[ext]; ok {
 			return category
 		}
@@ -406,7 +411,7 @@ func (o *Organizer) resolveCollision(path string) string {
 
 // moveFile handles the physical relocation of files with safety fallbacks.
 func (o *Organizer) moveFile(src, dst string) (int64, error) {
-	if o.DryRun {
+	if o.dryRun {
 		log.Printf("[DRYRUN] Would move %s to %s", src, dst)
 		return 0, nil
 	}
@@ -461,32 +466,32 @@ func (o *Organizer) Run(ctx context.Context) error {
 	o.startTime = time.Now()
 
 	// Path validation and resolution
-	absPath, err := filepath.Abs(o.RootPath)
+	absPath, err := filepath.Abs(o.rootPath)
 	if err != nil {
 		return fmt.Errorf("failed to resolve absolute path: %w", err)
 	}
-	o.RootPath = absPath
+	o.rootPath = absPath
 
 	// Prepare target directories
 	requiredDirs := []string{"mix"}
-	for catName := range o.Categories {
+	for catName := range o.categories {
 		requiredDirs = append(requiredDirs, catName)
 	}
 
 	for _, dirName := range requiredDirs {
-		dirPath := filepath.Join(o.RootPath, dirName)
-		o.TargetPaths[dirPath] = struct{}{}
+		dirPath := filepath.Join(o.rootPath, dirName)
+		o.targetPaths[dirPath] = struct{}{}
 
-		if !o.DryRun {
+		if !o.dryRun {
 			if err := os.MkdirAll(dirPath, 0755); err != nil {
-				o.Logger.Error("Failed to create directory",
+				o.logger.Error("Failed to create directory",
 					"action", "CREATE_DIR",
 					"path", dirPath,
 					"error", err.Error(),
 				)
 				return fmt.Errorf("failed to create directory %s: %w", dirPath, err)
 			}
-			o.Logger.Info("Directory created",
+			o.logger.Info("Directory created",
 				"action", "CREATE_DIR",
 				"path", dirPath,
 			)
@@ -497,7 +502,7 @@ func (o *Organizer) Run(ctx context.Context) error {
 
 	// Walk the directory tree
 	var processedCount, errorCount int
-	err = filepath.WalkDir(o.RootPath, func(path string, d fs.DirEntry, err error) error {
+	err = filepath.WalkDir(o.rootPath, func(path string, d fs.DirEntry, err error) error {
 		// Check if context was cancelled (Ctrl+C)
 		select {
 		case <-ctx.Done():
@@ -507,7 +512,7 @@ func (o *Organizer) Run(ctx context.Context) error {
 
 		if err != nil {
 			log.Printf("Error accessing path %s: %v", path, err)
-			o.Logger.Error("Error accessing path",
+			o.logger.Error("Error accessing path",
 				"path", path,
 				"error", err.Error(),
 			)
@@ -518,16 +523,16 @@ func (o *Organizer) Run(ctx context.Context) error {
 		// Skip directories and existing target folders
 		if d.IsDir() {
 			// Never skip the root dir
-			if path == o.RootPath {
+			if path == o.rootPath {
 				return nil
 			}
 
 			// Always skip target subdirs
-			if _, isTarget := o.TargetPaths[path]; isTarget && path != o.RootPath {
+			if _, isTarget := o.targetPaths[path]; isTarget && path != o.rootPath {
 				return filepath.SkipDir
 			}
 
-			if !o.Recursive {
+			if !o.recursive {
 				return filepath.SkipDir
 			}
 
@@ -544,7 +549,7 @@ func (o *Organizer) Run(ctx context.Context) error {
 			size := info.Size()
 			if o.minSize > 0 && size < o.minSize {
 				log.Printf("Skipped (too small): %s (%d bytes)", path, size)
-				o.Logger.Info("File skipped - too small",
+				o.logger.Info("File skipped - too small",
 					"action", "SKIP_SIZE",
 					"path", path,
 					"size", size,
@@ -553,7 +558,7 @@ func (o *Organizer) Run(ctx context.Context) error {
 			}
 			if o.maxSize > 0 && size > o.maxSize {
 				log.Printf("Skipped (too large): %s (%d bytes)", path, size)
-				o.Logger.Info("File skipped - too large",
+				o.logger.Info("File skipped - too large",
 					"action", "SKIP_SIZE",
 					"path", path,
 					"size", size,
@@ -565,7 +570,7 @@ func (o *Organizer) Run(ctx context.Context) error {
 		// Process individual file
 		if err := o.processFile(path, d); err != nil {
 			log.Printf("Error moving %s: %v", path, err)
-			o.Logger.Error("Error moving file",
+			o.logger.Error("Error moving file",
 				"source", path,
 				"error", err.Error(),
 			)
@@ -578,7 +583,7 @@ func (o *Organizer) Run(ctx context.Context) error {
 	})
 
 	// Cleanup logic for empty directories
-	if o.Recursive && !o.DryRun {
+	if o.recursive && !o.dryRun {
 		log.Println("Cleaning up empty subdirectories...")
 		if err := o.cleanupEmptyDirs(); err != nil {
 			log.Printf("Cleanup error: %v", err)
@@ -600,7 +605,7 @@ func (o *Organizer) Run(ctx context.Context) error {
 
 	fmt.Print(metrics.String())
 
-	if !o.DryRun && len(o.movedFiles) > 0 {
+	if !o.dryRun && len(o.movedFiles) > 0 {
 		if err := o.SaveHistory(); err != nil {
 			log.Printf("Warning: failed to save history file: %v", err)
 		}
@@ -614,13 +619,13 @@ func (o *Organizer) cleanupEmptyDirs() error {
 	// We use a slice to collect paths so we can sort them or process them
 	// without interfering with the active walk.
 	var dirs []string
-	err := filepath.WalkDir(o.RootPath, func(path string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(o.rootPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if d.IsDir() && path != o.RootPath {
+		if d.IsDir() && path != o.rootPath {
 			// Skip target folders (video, audio, etc.)
-			if _, isTarget := o.TargetPaths[path]; isTarget {
+			if _, isTarget := o.targetPaths[path]; isTarget {
 				return filepath.SkipDir
 			}
 			dirs = append(dirs, path)
@@ -647,14 +652,14 @@ func (o *Organizer) cleanupEmptyDirs() error {
 			log.Printf("Removing empty directory: %s", path)
 			o.deletedDirs = append(o.deletedDirs, path)
 			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-				o.Logger.Error("Failed to remove directory",
+				o.logger.Error("Failed to remove directory",
 					"action", "DELETE_DIR",
 					"path", path,
 					"error", err.Error(),
 				)
 				return err
 			}
-			o.Logger.Info("Directory removed",
+			o.logger.Info("Directory removed",
 				"action", "DELETE_DIR",
 				"path", path,
 			)
