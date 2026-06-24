@@ -9,9 +9,10 @@ import (
 	"os"
 	"strings"
 
+	"github.com/spf13/cobra"
+
 	"github.com/riccione/fileater/internal/organizer"
 	"github.com/riccione/fileater/internal/rollback"
-	"github.com/spf13/cobra"
 )
 
 var (

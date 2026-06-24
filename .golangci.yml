@@ -15,18 +15,11 @@ linters:
     - unconvert
     - copyloopvar
     - errcheck
-  formatters:
-    enable:
-      - gofmt
-      - goimports
   settings:
     govet:
       enable-all: true
       disable:
         - fieldalignment
-    goimports:
-      local-prefixes:
-        - github.com/riccione/fileater
     misspell:
       locale: US
   exclusions:
@@ -36,3 +29,12 @@ linters:
       - path: _test\.go
         linters:
           - errcheck
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/riccione/fileater
